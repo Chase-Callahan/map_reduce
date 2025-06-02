@@ -16,8 +16,8 @@ defmodule MapReduce.Worker do
     GenServer.call(pid, {:assign, assignment})
   end
 
-  def send_result(pid, assignment, destination) do
-    GenServer.cast(pid, {:result, assignment, destination})
+  def result(pid, assignment) do
+    GenServer.call(pid, {:result, assignment})
   end
 
   @impl GenServer
@@ -27,10 +27,9 @@ defmodule MapReduce.Worker do
     {:reply, {:ok, :processing}, state}
   end
 
-  @impl GenSever
-  def handle_cast({:result, assignment, destination}, state) do
-    send(destination, {:ok, Map.get(state, Assignment.id(assignment))})
-    {:noreply, state}
+  @impl GenServer
+  def handle_call({:result, assignment}, _from, state) do
+    {:reply, {:ok, Map.get(state, Assignment.id(assignment))}, state}
   end
 
   defp schedule_assignment(assignment, coordinator) do
@@ -39,7 +38,10 @@ defmodule MapReduce.Worker do
 
   @impl GenServer
   def handle_info({:do_assignment, assignment, coordinator}, state) do
+    {:ok, input_data} = Assignment.input_data(assignment)
+    output_data = Assignment.process_data(assignment, input_data)
+
     send(coordinator, {:ok, self(), :completed})
-    {:noreply, Map.put(state, Assignment.id(assignment), :final_result)}
+    {:noreply, Map.put(state, Assignment.id(assignment), output_data)}
   end
 end
