@@ -1,8 +1,9 @@
 defmodule MapReduce.Assignment do
-  def new!(opts) do
+  def new!(input_stream, process_fun, type) do
     %{
-      input_fun: Keyword.fetch!(opts, :input_fun),
-      process_fun: Keyword.fetch!(opts, :process_fun)
+      input_stream: input_stream,
+      process_fun: process_fun,
+      type: type
     }
   end
 
@@ -10,11 +11,19 @@ defmodule MapReduce.Assignment do
     :erlang.phash2(assignment)
   end
 
-  def input_data(%{input_fun: input_fun}) do
-    input_fun.()
+  def input_data(%{input_stream: input_stream}) do
+    {:ok, Enum.to_list(input_stream)}
   end
 
-  def process_data(%{process_fun: process_fun}, data) do
-    process_fun.(data)
+  def process_data(%{process_fun: {module, function, args}}, data) do
+    apply(module, function, [data | args])
+  end
+
+  def type(assignment) do
+    Map.fetch!(assignment, :type)
+  end
+
+  def output_stream(_assignment) do
+    Stream.cycle([1])
   end
 end
