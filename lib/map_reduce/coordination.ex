@@ -32,18 +32,18 @@ defmodule MapReduce.Coordination do
         |> Map.update!(:worker_assignments, &Map.put(&1, worker, assignment))
         |> Map.update!(:mapper_stream, &Stream.drop(&1, 1))
 
-      %{reduce_assignments: [head | tail]} = state->
+      %{reduce_assignments: [head | tail]} = state ->
         state
-        |> Map.update!(:worker_assignments, &(Map.put(&1, worker, head)))
+        |> Map.update!(:worker_assignments, &Map.put(&1, worker, head))
         |> Map.put(:reduce_assignments, tail)
 
       %{combine_assignments: [head | tail]} = state ->
         state
-        |> Map.update!(:worker_assignments, &(Map.put(&1, worker, head)))
+        |> Map.update!(:worker_assignments, &Map.put(&1, worker, head))
         |> Map.put(:combine_assignments, tail)
 
       state ->
-      state
+        state
     end
     |> Map.put(:idle_workers, [])
   end
@@ -76,16 +76,23 @@ defmodule MapReduce.Coordination do
   defp create_next_assignment(state, completed_assignment) do
     case Assignment.type(completed_assignment) do
       :mapper ->
-        reduce_assignment = Assignment.output_stream(completed_assignment)
-        |> Assignment.new!(create_reduce_fun(state), :reduce)
+        reduce_assignment =
+          Assignment.output_stream(completed_assignment)
+          |> Assignment.new!(create_reduce_fun(state), :reduce)
 
-        Map.update!(state, :reduce_assignments, &([reduce_assignment | &1]))
+        Map.update!(state, :reduce_assignments, &[reduce_assignment | &1])
 
       :reduce ->
         assign_combine_assignment(state, completed_assignment)
+
+      :combine ->
+        Map.update!(
+          state,
+          :final_outputs,
+          &(&1 ++ [Assignment.output_stream(completed_assignment)])
+        )
     end
   end
-
 
   defp create_reduce_fun(state) do
     {__MODULE__, :reduce_fun, [state.reduce_item_fun]}
@@ -98,9 +105,9 @@ defmodule MapReduce.Coordination do
   end
 
   defp assign_combine_assignment(%{final_outputs: [head | tail]} = state, completed_assignment) do
-
-    assignment = Stream.concat(head, Assignment.output_stream(completed_assignment))
-    |> Assignment.new!(create_reduce_fun(state), :combine)
+    assignment =
+      Stream.concat(head, Assignment.output_stream(completed_assignment))
+      |> Assignment.new!(create_reduce_fun(state), :combine)
 
     state
     |> Map.put(:final_outputs, tail)
@@ -126,5 +133,14 @@ defmodule MapReduce.Coordination do
     state
     |> Map.update!(:worker_assignments, &Map.delete(&1, worker))
     |> Map.update!(:idle_workers, &[worker | &1])
+  end
+
+  def final_result(state) do
+    all_assignments_complete? = Enum.empty?(state.worker_assignments)
+
+    if all_assignments_complete? do
+      [final_result] = state.final_outputs
+      final_result
+    end
   end
 end

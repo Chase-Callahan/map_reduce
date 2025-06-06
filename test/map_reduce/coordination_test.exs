@@ -93,28 +93,63 @@ defmodule MapReduce.CoordinationTest do
       |> Coordination.assignment_empty(w2)
       |> Coordination.worker_assignments()
 
-
-      assignment = Map.fetch!(worker_assignments, w2)
+    assignment = Map.fetch!(worker_assignments, w2)
 
     assert :reduce == Assignment.type(assignment)
   end
 
-  test "when a reduce assignment is marked as empty, we move from reduce, to combine assignments", ctx do
+  test "when a reduce assignment is marked as empty, we move from reduce, to combine assignments",
+       ctx do
     [w1, w2 | _] = workers = create_workers(5)
 
     worker_assignments =
       Coordination.new!(ctx.stream, workers, &Function.identity/1, &Function.identity/1)
+      # First Mapper complete
       |> Coordination.assignment_completed(w1)
+      # Second Mapper Complete
       |> Coordination.assignment_completed(w2)
+      # Marks Mapper strem as complete
       |> Coordination.assignment_empty(w2)
+      # First Reduce Complete
       |> Coordination.assignment_completed(w2)
+      # Second Reduce Complete & Combine First and Second Reduce Assignment Created
       |> Coordination.assignment_completed(w2)
       |> Coordination.worker_assignments()
 
-
-      assignment = Map.fetch!(worker_assignments, w2)
+    assignment = Map.fetch!(worker_assignments, w2)
 
     assert :combine == Assignment.type(assignment)
+  end
+
+  test "when all assignments have been completed, an empty map is returned when requesting worker assignments",
+       ctx do
+    [w1] = workers = create_workers(1)
+
+    assert %{} ==
+             Coordination.new!(ctx.stream, workers, &Function.identity/1, &Function.identity/1)
+             |> Coordination.assignment_completed(w1)
+             |> Coordination.assignment_completed(w1)
+             |> Coordination.assignment_empty(w1)
+             |> Coordination.assignment_completed(w1)
+             |> Coordination.assignment_completed(w1)
+             |> Coordination.assignment_completed(w1)
+             |> Coordination.worker_assignments()
+  end
+
+  test "when all assignments have been completed, the final result can be retrieved", ctx do
+    [w1] = workers = create_workers(1)
+
+    final_result =
+      Coordination.new!(ctx.stream, workers, &Function.identity/1, &Function.identity/1)
+      |> Coordination.assignment_completed(w1)
+      |> Coordination.assignment_completed(w1)
+      |> Coordination.assignment_empty(w1)
+      |> Coordination.assignment_completed(w1)
+      |> Coordination.assignment_completed(w1)
+      |> Coordination.assignment_completed(w1)
+      |> Coordination.final_result()
+
+    assert final_result |> Enum.to_list() |> is_list()
   end
 
   defp create_workers(n) do
