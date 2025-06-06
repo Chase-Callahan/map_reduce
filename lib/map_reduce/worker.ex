@@ -17,28 +17,11 @@ defmodule MapReduce.Worker do
     GenServer.call(pid, {:assign, assignment})
   end
 
-  def result(pid, assignment) do
-    GenServer.call(pid, {:result, assignment})
-  end
-
-  def all_results(pid) do
-    GenServer.call(pid, :all_results)
-  end
-
   @impl GenServer
   def handle_call({:assign, assignment}, {coordinator, _ref}, state) do
     schedule_assignment(assignment, coordinator)
 
     {:reply, {:ok, :processing}, state}
-  end
-
-  @impl GenServer
-  def handle_call({:result, assignment}, _from, state) do
-    {:reply, {:ok, Map.get(state, Assignment.id(assignment))}, state}
-  end
-
-  def handle_call(:all_results, _from, state) do
-    {:reply, {:ok, state}, state}
   end
 
   defp schedule_assignment(assignment, coordinator) do
@@ -47,19 +30,15 @@ defmodule MapReduce.Worker do
 
   @impl GenServer
   def handle_info({:do_assignment, assignment, coordinator}, state) do
-    output_data =
-      case Assignment.input_data(assignment) do
-        {:ok, []} ->
-          Coordinator.assignment_empty(coordinator)
-          []
+    case Assignment.process(assignment) do
+      :empty ->
+        :ok = Coordinator.assignment_empty(coordinator)
 
-        {:ok, input_data} ->
-          output_data = Assignment.process_data(assignment, input_data)
-          Coordinator.assignment_complete(coordinator)
-          output_data
-      end
+      :ok ->
+        :ok = Coordinator.assignment_complete(coordinator)
+    end
 
-    {:noreply, Map.put(state, Assignment.id(assignment), output_data)}
+    {:noreply, state}
   end
 
   def child_spec(id) do
