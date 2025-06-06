@@ -7,34 +7,23 @@ defmodule MapReduce.Assignment do
     }
   end
 
-  def id(assignment) do
-    :erlang.phash2(assignment)
-  end
-
-  def input_data(%{input_stream: input_stream}) do
-    {:ok, Enum.to_list(input_stream)}
-  end
-
-  def process_data(%{process_fun: {module, function, args}}, data) do
-    apply(module, function, [data | args])
-  end
-
-  def process(assignment) do
-    output =
+  def process(%{process_fun: {module, function, args}} = assignment) do
+    input_data =
       assignment.input_stream
       |> Enum.to_list()
-      |> assignment.process_fun.()
 
-    output_file(assignment)
-    |> File.write!(:erlang.term_to_binary(output))
-  end
+    case input_data do
+      [] ->
+        :empty
 
-  defp output_file(assignment) do
-    Path.expand("./priv/tmp/#{id(assignment)}")
-  end
+      input_data ->
+        output = apply(module, function, [input_data | args])
 
-  def type(assignment) do
-    Map.fetch!(assignment, :type)
+        output_file(assignment)
+        |> File.write!(:erlang.term_to_binary(output))
+
+        :ok
+    end
   end
 
   def output_stream(assignment) do
@@ -48,5 +37,13 @@ defmodule MapReduce.Assignment do
     |> File.stream!()
     |> Stream.map(&:erlang.binary_to_term/1)
     |> Stream.flat_map(fn map -> Enum.to_list(map) end)
+  end
+
+  defp output_file(assignment) do
+    Path.expand("./priv/tmp/#{:erlang.phash2(assignment)}")
+  end
+
+  def type(assignment) do
+    Map.fetch!(assignment, :type)
   end
 end
