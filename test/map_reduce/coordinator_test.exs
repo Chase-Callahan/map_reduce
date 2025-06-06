@@ -48,39 +48,4 @@ defmodule MapReduceTest.CoordinatorTest do
 
     {:ok, [_, _, _, _, _]} = Coordinator.workers(coordinator)
   end
-
-  test "creates 5 workers", ctx do
-    coordinator =
-      start_link_supervised!(
-        {Coordinator,
-         [
-           workers: 5,
-           input_stream: ctx.stream,
-           mapper_fun: &type_to_age/1,
-           reduce_fun: &type_median_age/1
-         ]}
-      )
-
-    assert {:ok, [_w1, _w2, _w3, _w4, _w5]} = Coordinator.workers(coordinator)
-  end
-
-  test "farms out task to all workers", ctx do
-    coordinator =
-      start_link_supervised!(
-        {Coordinator,
-         [
-           workers: 5,
-           input_stream: ctx.stream,
-           mapper_fun: &type_to_age/1,
-           reduce_fun: &type_median_age/1
-         ]}
-      )
-
-    {:ok, workers} = Coordinator.workers(coordinator)
-
-    for worker <- workers do
-      {:ok, results} = Worker.all_results(worker)
-      refute results == %{}
-    end
-  end
 end

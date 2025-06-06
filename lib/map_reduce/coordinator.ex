@@ -3,6 +3,7 @@ defmodule MapReduce.Coordinator do
 
   alias MapReduce.Assignment
   alias MapReduce.Worker
+  alias MapReduce.Coordination
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
@@ -20,14 +21,12 @@ defmodule MapReduce.Coordinator do
     schedule_processing()
 
     {:ok,
-     %{
-       workers: %{ready: workers, processing: []},
-       input_stream: Keyword.fetch!(opts, :input_stream),
-       mapper_fun: Keyword.fetch!(opts, :mapper_fun),
-       reduce_fun: Keyword.fetch!(opts, :reduce_fun),
-       assignments: %{},
-       reduce_assignments: []
-     }}
+     Coordination.new!(
+       Keyword.fetch!(opts, :input_stream),
+       workers,
+       Keyword.fetch!(opts, :mapper_fun),
+       Keyword.fetch!(opts, :reduce_fun)
+     )}
   end
 
   defp schedule_processing() do
@@ -47,10 +46,8 @@ defmodule MapReduce.Coordinator do
   end
 
   @impl GenServer
-  def handle_call(:workers, _from, state) do
-    all_workers = Enum.map(state.workers, fn {_, workers} -> workers end) |> List.flatten()
-
-    {:reply, {:ok, all_workers}, state}
+  def handle_call(:workers, _from, coordination) do
+    {:reply, {:ok, Coordination.workers(coordination)}, coordination}
   end
 
   @impl GenServer
@@ -87,8 +84,12 @@ defmodule MapReduce.Coordinator do
     {:noreply, assign_initial_assignments(state)}
   end
 
-  defp assign_initial_assignments(%{workers: %{ready: []}} = state) do
-    state
+  defp assign_initial_assignments(coordination) do
+    for {worker, assignment} <- Coordination.worker_assignments(coordination) do
+      Worker.assign(worker, assignment)
+    end
+
+    coordination
   end
 
   defp assign_initial_assignments(%{workers: %{ready: [worker | other_workers]}} = state) do

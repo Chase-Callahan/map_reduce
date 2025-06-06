@@ -143,4 +143,8 @@ defmodule MapReduce.Coordination do
       final_result
     end
   end
+
+  def workers(state) do
+    Map.keys(state.worker_assignments) ++ state.idle_workers
+  end
 end
