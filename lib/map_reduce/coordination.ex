@@ -8,7 +8,8 @@ defmodule MapReduce.Coordination do
 
     %{
       input_stream: input_stream,
-      mapper_stream: Stream.chunk_every(input_stream, 10),
+      mapper_stream:
+        Stream.chunk_every(input_stream, 10) |> Stream.flat_map(&Function.identity/1),
       idle_workers: workers,
       worker_assignments: %{},
       map_item_fun: map_item_fun,
@@ -23,10 +24,12 @@ defmodule MapReduce.Coordination do
   defp assign_workers(state) do
     for worker <- state.idle_workers, reduce: state do
       %{mapper_stream: mapper_stream} = state ->
-        assignment =
+        test =
           mapper_stream
           |> Stream.take(1)
-          |> Assignment.new!(create_mapper_fun(state), :mapper)
+          |> Stream.flat_map(&Function.identity/1)
+
+        assignment = Assignment.new!(test, create_mapper_fun(state), :mapper)
 
         state
         |> Map.update!(:worker_assignments, &Map.put(&1, worker, assignment))
@@ -139,8 +142,18 @@ defmodule MapReduce.Coordination do
     all_assignments_complete? = Enum.empty?(state.worker_assignments)
 
     if all_assignments_complete? do
-      [final_result] = state.final_outputs
-      final_result
+      case state.final_outputs do
+        [one, two] ->
+          dbg("2")
+          last = Assignment.new!(Stream.concat(one, two), create_reduce_fun(state), :combine)
+          Assignment.process(last)
+          Assignment.output_stream(last)
+          one
+
+        [final] ->
+          dbg("1")
+          final
+      end
     end
   end
 

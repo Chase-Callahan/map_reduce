@@ -18,18 +18,17 @@ defmodule MapReduceTest.CoordinatorTest do
   end
 
   def type_to_age(cat) do
-    # send(test_proc, {:mapping, self()})
-    [{cat.type, cat.age}]
+    {cat.type, cat.age}
   end
 
   def type_median_age({type, ages}) do
-    [median_age | _] = Enum.sort(ages) |> Enum.drop(Enum.count(ages) / 2)
+    [median_age | _] = Enum.sort(ages) |> Enum.drop(Integer.floor_div(Enum.count(ages), 2))
     [median_age]
   end
 
   setup do
     path = Path.expand("./priv/sample_data/cats.csv")
-    stream = File.stream!(path) |> Stream.map(&parse_cat/1)
+    stream = File.stream!(path) |> Stream.map(&parse_cat/1) |> Stream.chunk_every(10)
 
     [stream: stream]
   end
@@ -47,5 +46,22 @@ defmodule MapReduceTest.CoordinatorTest do
       )
 
     {:ok, [_, _, _, _, _]} = Coordinator.workers(coordinator)
+  end
+
+  test "it works", ctx do
+    coordinator =
+      start_link_supervised!(
+        {Coordinator,
+         [
+           workers: 5,
+           input_stream: ctx.stream,
+           mapper_fun: &type_to_age/1,
+           reduce_fun: &type_median_age/1
+         ]}
+      )
+
+    Process.sleep(3_000)
+
+    Coordinator.final_result(coordinator) |> dbg()
   end
 end

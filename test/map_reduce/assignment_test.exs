@@ -10,7 +10,7 @@ defmodule MapReduceTest.AssignmentTest do
   describe "new!/1" do
     test "creates new assignment" do
       stream = Stream.cycle([1])
-      process_fun = &Function.identity/1
+      process_fun = {Function, :identity, []}
       type = :mapper
 
       assert %{

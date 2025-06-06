@@ -50,41 +50,36 @@ defmodule MapReduce.Coordinator do
     {:reply, {:ok, Coordination.workers(coordination)}, coordination}
   end
 
+  def handle_call(:final_result, _from, coordination) do
+    {:reply, {:ok, Coordination.final_result(coordination)}, coordination}
+  end
+
   @impl GenServer
-  def handle_cast({:assignment_empty, _worker}, state) do
-    {:noreply, state}
+  def handle_cast({:assignment_empty, worker}, coordination) do
+    coordination = Coordination.assignment_empty(coordination, worker)
+    assign_worker_assignments(coordination)
+
+    {:noreply, coordination}
   end
 
-  def handle_cast({:assignment_complete, worker}, state) do
-    {:noreply, handle_completed_assignment(state, worker)}
+  def handle_cast({:assignment_complete, worker}, coordination) do
+    coordination =
+      if %{} != Coordination.worker_assignments(coordination) do
+        coordination = Coordination.assignment_completed(coordination, worker)
+        assign_worker_assignments(coordination)
+      else
+        coordination
+      end
+
+    {:noreply, coordination}
   end
-
-  defp handle_completed_assignment(%{input_stream: input_stream} = state, worker) do
-    map_assignment = Map.fetch!(state.assignments, worker)
-
-    assignment =
-      state.input_stream
-      |> Stream.take(10)
-      |> Assignment.new!(create_mapper(state))
-
-    Worker.assign(worker, assignment)
-
-    # state
-    # |> Map.update!(:assignments, &Map.put(worker, assignment))
-  end
-
-  defp create_reducer(state, map_assignment) do
-    {__MODULE__, :reducer, [state.reduce_fun, map_assignment]}
-  end
-
-  # def reducer(data, )
 
   @impl GenServer
   def handle_info(:start_processing, state) do
-    {:noreply, assign_initial_assignments(state)}
+    {:noreply, assign_worker_assignments(state)}
   end
 
-  defp assign_initial_assignments(coordination) do
+  defp assign_worker_assignments(coordination) do
     for {worker, assignment} <- Coordination.worker_assignments(coordination) do
       Worker.assign(worker, assignment)
     end
@@ -92,30 +87,7 @@ defmodule MapReduce.Coordinator do
     coordination
   end
 
-  defp assign_initial_assignments(%{workers: %{ready: [worker | other_workers]}} = state) do
-    assignment =
-      state.input_stream
-      |> Stream.take(10)
-      |> Assignment.new!(create_mapper(state))
-
-    {:ok, :processing} = Worker.assign(worker, assignment)
-
-    state
-    |> Map.update!(:input_stream, &Stream.drop(&1, 10))
-    |> Map.update!(:assignments, &Map.put(&1, worker, assignment))
-    |> Map.update!(:workers, fn workers ->
-      %{workers | ready: other_workers, processing: [worker | workers.processing]}
-    end)
-    |> assign_initial_assignments()
-  end
-
-  defp create_mapper(state) do
-    {__MODULE__, :mapper, [state.mapper_fun]}
-  end
-
-  def mapper(input_data, mapper_fun) do
-    for datum <- input_data do
-      mapper_fun.(datum)
-    end
+  def final_result(pid) do
+    GenServer.call(pid, :final_result)
   end
 end

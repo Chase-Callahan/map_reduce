@@ -10,7 +10,7 @@ defmodule MapReduceTest.WorkerTest do
     stream = Stream.cycle([1]) |> Stream.take(5)
 
     assignment =
-      Assignment.new!(stream, &Function.identity/1, :mapper)
+      Assignment.new!(stream, {Function, :identity, []}, :mapper)
 
     {:ok, :processing} = Worker.assign(worker, assignment)
   end

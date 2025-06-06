@@ -1,5 +1,5 @@
 defmodule MapReduce.Assignment do
-  def new!(input_stream, process_fun, type) do
+  def new!(input_stream, {_module, _function, _args} = process_fun, type) do
     %{
       input_stream: input_stream,
       process_fun: process_fun,
@@ -33,10 +33,38 @@ defmodule MapReduce.Assignment do
       File.touch(path)
     end
 
-    path
-    |> File.stream!()
-    |> Stream.map(&:erlang.binary_to_term/1)
-    |> Stream.flat_map(fn map -> Enum.to_list(map) end)
+    contents =
+      path
+      |> File.read!()
+
+    case contents do
+      "" -> []
+      binary -> :erlang.binary_to_term(binary)
+    end
+    |> Stream.map(&Function.identity/1)
+
+    #   path
+    #   |> File.stream!()
+    #   |> Enum.to_list()
+    #   |> dbg()
+
+    #   path
+    #   |> File.stream!()
+    #   |> Stream.into([])
+    #   |> Stream.flat_map(&Function.identity/1)
+    #   |> Enum.to_list()
+    #   |> dbg()
+
+    #   path
+    #      |> File.stream!()
+    #      |> Stream.map(&:erlang.binary_to_term/1)
+    #      |> Stream.flat_map(fn map -> Enum.to_list(map) end)
+    # |> Enum.to_list()
+
+    #   path
+    #   |> File.stream!()
+    #   |> Stream.map(&:erlang.binary_to_term/1)
+    #   |> Stream.flat_map(fn map -> Enum.to_list(map) end)
   end
 
   defp output_file(assignment) do
