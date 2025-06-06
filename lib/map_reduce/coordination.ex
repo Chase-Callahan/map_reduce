@@ -14,7 +14,8 @@ defmodule MapReduce.Coordination do
       map_item_fun: map_item_fun,
       reduce_item_fun: reduce_item_fun,
       reduce_assignments: [],
-      combine_assignments: []
+      combine_assignments: [],
+      final_outputs: []
     }
     |> assign_workers()
   end
@@ -39,7 +40,7 @@ defmodule MapReduce.Coordination do
       %{combine_assignments: [head | tail]} = state ->
         state
         |> Map.update!(:worker_assignments, &(Map.put(&1, worker, head)))
-        |> Map.put(:reduce_assignments, tail)
+        |> Map.put(:combine_assignments, tail)
 
       state ->
       state
@@ -65,6 +66,7 @@ defmodule MapReduce.Coordination do
 
   def assignment_completed(state, worker) do
     completed_assignment = Map.fetch!(state.worker_assignments, worker)
+
     state
     |> create_next_assignment(completed_assignment)
     |> move_worker_to_idle(worker)
@@ -79,6 +81,8 @@ defmodule MapReduce.Coordination do
 
         Map.update!(state, :reduce_assignments, &([reduce_assignment | &1]))
 
+      :reduce ->
+        assign_combine_assignment(state, completed_assignment)
     end
   end
 
@@ -88,14 +92,33 @@ defmodule MapReduce.Coordination do
   end
 
   def reduce_fun(data, reduce_item_fun) do
-    for {key, values} = datum <- data, into: %{} do
+    for {key, _values} = datum <- data, into: %{} do
       {key, reduce_item_fun.(datum)}
     end
   end
 
-  def assignment_empty(state, worker) do
+  defp assign_combine_assignment(%{final_outputs: [head | tail]} = state, completed_assignment) do
+
+    assignment = Stream.concat(head, Assignment.output_stream(completed_assignment))
+    |> Assignment.new!(create_reduce_fun(state), :combine)
+
+    state
+    |> Map.put(:final_outputs, tail)
+    |> Map.update!(:combine_assignments, &(&1 ++ [assignment]))
+  end
+
+  defp assign_combine_assignment(%{final_outputs: []} = state, completed_assignment) do
+    Map.put(state, :final_outputs, [Assignment.output_stream(completed_assignment)])
+  end
+
+  def assignment_empty(%{mapper_stream: _} = state, worker) do
     move_worker_to_idle(state, worker)
     |> Map.delete(:mapper_stream)
+    |> assign_workers()
+  end
+
+  def assignment_empty(state, worker) do
+    move_worker_to_idle(state, worker)
     |> assign_workers()
   end
 

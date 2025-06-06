@@ -83,7 +83,7 @@ defmodule MapReduce.CoordinationTest do
     refute Map.fetch!(worker_assignments_1, w1) == Map.fetch!(worker_assignments_2, w1)
   end
 
-  test "when an assignment is marked as empty, we move from mapper assignments to reduce assignments",
+  test "when a mapper assignment is marked as empty, we move from mapper assignments to reduce assignments",
        ctx do
     [w1, w2 | _] = workers = create_workers(5)
 
@@ -97,6 +97,24 @@ defmodule MapReduce.CoordinationTest do
       assignment = Map.fetch!(worker_assignments, w2)
 
     assert :reduce == Assignment.type(assignment)
+  end
+
+  test "when a reduce assignment is marked as empty, we move from reduce, to combine assignments", ctx do
+    [w1, w2 | _] = workers = create_workers(5)
+
+    worker_assignments =
+      Coordination.new!(ctx.stream, workers, &Function.identity/1, &Function.identity/1)
+      |> Coordination.assignment_completed(w1)
+      |> Coordination.assignment_completed(w2)
+      |> Coordination.assignment_empty(w2)
+      |> Coordination.assignment_completed(w2)
+      |> Coordination.assignment_completed(w2)
+      |> Coordination.worker_assignments()
+
+
+      assignment = Map.fetch!(worker_assignments, w2)
+
+    assert :combine == Assignment.type(assignment)
   end
 
   defp create_workers(n) do
